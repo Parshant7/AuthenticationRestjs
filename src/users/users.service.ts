@@ -22,6 +22,7 @@ import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateEmailDto } from './dto/update-email.dto';
+import { OtpDto } from './dto/otp.dto';
 
 const saltOrRounds = 10;
 
@@ -54,6 +55,11 @@ export class UsersService {
 
   async login(userCredentials: LoginUserDto): Promise<any> {
     const user = await this.User.findOne({ email: userCredentials.email });
+    
+    if(!user){
+      throw new UnauthorizedException();
+    }
+
     const isMatch = await bcrypt.compare(
       userCredentials.password,
       user.password,
@@ -153,7 +159,7 @@ export class UsersService {
       pin: randomPin,
       createdAt: moment(),
       expiryDate: moment().add(1, 'h'),
-      email: user.email,
+      email: newEmail? newEmail:user.email,
       isVerified: false
     };
 
@@ -252,6 +258,36 @@ export class UsersService {
     await this.sendOtp(user, user?.otp._id, newEmail);
 
     return "Otp sent Successfully";
+  }
+
+
+  async emailUpdate(req: RequestExpress, body: OtpDto): Promise<any>{
+
+    const userId = req["user"]._id;
+    // const newEmail = body.newEmail;
+    
+    let user = await this.User.findById(userId).populate("otp");
+
+
+    // if(user){
+    //   throw new HttpException('Email already exists', HttpStatus.BAD_REQUEST);
+    // }
+
+    /////////////////////////
+
+    await this.verifyOtp(req, user);
+
+    /////////////////////////
+
+    console.log("this is user", req["user"]);
+
+    // if(!req["user"].isResetToken){
+    //   throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
+    // }
+
+    await this.User.findByIdAndUpdate(userId, {email: user.otp.email});
+
+    return "successfully changed the email";
   }
 
 }

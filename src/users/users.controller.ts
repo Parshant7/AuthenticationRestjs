@@ -10,6 +10,7 @@ import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateEmailDto } from './dto/update-email.dto';
+import { OtpDto } from './dto/otp.dto';
 
 @Controller('users')
 export class UsersController {
@@ -71,13 +72,14 @@ export class UsersController {
 
     @UseGuards(AuthorizeValidatedUser)
     @Patch('/emailUpdateRequest')
-    async changeEmail(@Request() req: RequestExpress, @Body() body: UpdateEmailDto) {
+    async emailUpdateRequest(@Request() req: RequestExpress, @Body() body: UpdateEmailDto) {
         return this.userService.emailUpdateRequest(req, body);
     }
 
     @UseGuards(AuthorizeValidatedUser)
-    @Patch('/updateEmail')
-    async changeEmail(@Request() req: RequestExpress, @Body() body: UpdateEmailDto) {
-        return this.userService.emailUpdateRequest(req, body);
+    @Patch('/emailUpdate')
+    async emailUpdate(@Request() req: RequestExpress, @Body() body: OtpDto) {
+        return this.userService.emailUpdate(req, body);
     }
+
 }
