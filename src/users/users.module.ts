@@ -6,6 +6,8 @@ import { UserSchema } from './schemas/user.schema';
 import { OtpSchema } from './schemas/otp.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
+import { Cat } from './cat.entity';
+import { OtpC } from './otp.entity';
 
 @Module({
   imports: [
@@ -19,7 +21,15 @@ import { ConfigModule } from '@nestjs/config';
     }),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService,  {
+      provide: 'CATS_REPOSITORY',
+      useValue: Cat,
+    },
+    {
+      provide: 'OTP_REPOSITORY',
+      useValue: OtpC,
+    }
+  ],
   exports: [UsersService],
 
 })

@@ -3,7 +3,8 @@ import {
   UnauthorizedException,
   HttpException,
   HttpStatus,
-  BadRequestException
+  BadRequestException,
+  Inject
 } from '@nestjs/common';
 import {Request as RequestExpress } from "express";
 import { Model } from 'mongoose';
@@ -23,6 +24,8 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateEmailDto } from './dto/update-email.dto';
 import { OtpDto } from './dto/otp.dto';
+import { Cat } from './cat.entity';
+import { OtpC } from './otp.entity';
 
 const saltOrRounds = 10;
 
@@ -32,11 +35,47 @@ export class UsersService {
   constructor(
     @InjectModel('users') private User: Model<User>,
     @InjectModel('otps') private Otp: Model<Otp>,
+    @Inject('CATS_REPOSITORY')
+    private catsRepository: typeof Cat,
+    @Inject('OTP_REPOSITORY')
+    private otpRepository: typeof OtpC,
 
     private readonly mailerService: MailerService,
     private readonly jwtService: JwtService,
   ) {}
 
+  async findAll(): Promise<Cat[]> {
+    return this.catsRepository.findAll<Cat>();
+  }
+
+  async registerUser(newUser: CreateUserDto): Promise<User> {
+    console.log("user ", newUser);
+     const isExists = (await this.catsRepository.findOne({
+      where: {
+        email: newUser.email,
+      }
+    })) ? true : false;
+
+    if (isExists) {
+      throw new HttpException(
+        `Email '${newUser.email}' already exists.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    newUser.password = await bcrypt.hash(newUser.password, saltOrRounds);
+    await this.sendOtp(newUser);
+
+    const user = {
+      email: newUser.email,
+      password: newUser.password,
+      name: newUser.name
+    }
+
+    const createdUser = await this.catsRepository.create(user);
+    return createdUser;
+  }
+  
   async register(newUser: CreateUserDto): Promise<User> {
     const isExists = (await this.findOne(newUser.email)) ? true : false;
 

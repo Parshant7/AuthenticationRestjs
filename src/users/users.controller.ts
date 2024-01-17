@@ -82,4 +82,23 @@ export class UsersController {
         return this.userService.emailUpdate(req, body);
     }
 
+    @Get("/findAllCats")
+    async findAll(){
+      return this.userService.findAll();
+    }
+
+
+    //sequelize
+    @ApiTags('register User')
+    @Post("/registerUser")
+    @ApiResponse({ status: 201, description: 'The record has been successfully created.'})
+    @ApiResponse({ status: 401, description: 'Unauthorized.'})
+    @ApiBody({
+        type: CreateUserDto,
+        description: 'Json structure for user object',
+    })
+    async registerUser(@Body() user: CreateUserDto):Promise<User>{
+        return this.userService.registerUser(user);
+    }
+    
 }
