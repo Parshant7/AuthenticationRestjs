@@ -17,9 +17,9 @@ export class ResetPasswordDto {
       required: true
     })
     @IsString()
-    @MinLength(8, { message: 'Password must be at least 8 characters long' })
+    @MinLength(8, { message: 'New Password must be at least 8 characters long' })
     @Matches(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]+$/, {
-      message: 'Password must contain at least one letter and one number',
+      message: 'New Password must contain at least one letter and one number',
     })
     newPassword: string;
 
@@ -28,9 +28,9 @@ export class ResetPasswordDto {
       required: true
     })
     @IsString()
-    @MinLength(8, { message: 'Password must be at least 8 characters long' })
+    @MinLength(8, { message: 'Confirm Password must be at least 8 characters long' })
     @Matches(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]+$/, {
-      message: 'Password must contain at least one letter and one number',
+      message: 'Confirm Password must contain at least one letter and one number',
     })
     confirmPassword: string;
 }

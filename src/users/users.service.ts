@@ -3,60 +3,69 @@ import {
   UnauthorizedException,
   HttpException,
   HttpStatus,
-  BadRequestException
+  BadRequestException,
+  Inject,
 } from '@nestjs/common';
-import {Request as RequestExpress } from "express";
-import { Model } from 'mongoose';
-import { InjectModel } from '@nestjs/mongoose';
-// import { UserSchema } from './schemas/user.schema';
+import { Request as RequestExpress } from 'express';
 import { CreateUserDto } from './dto/create-user.dto';
-import { User } from './models/user.model';
-import { Otp } from './models/otp.model';
 import { LoginUserDto } from './dto/login-user.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
 import { otpGen } from 'otp-gen-agent';
 import * as moment from 'moment';
-import { ChangePasswordDto } from "./dto/change-password.dto";
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateEmailDto } from './dto/update-email.dto';
 import { OtpDto } from './dto/otp.dto';
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
+import { Otp } from './otp.entity';
 
 const saltOrRounds = 10;
 
 @Injectable()
-// @Dependencies('User') // this line causes error while using jwt.signAsync
 export class UsersService {
   constructor(
-    @InjectModel('users') private User: Model<User>,
-    @InjectModel('otps') private Otp: Model<Otp>,
-
+    @Inject('USER_REPOSITORY')
+    private userRepository: Repository<User>,
+    @Inject('OTP_REPOSITORY')
+    private otpRepository: Repository<Otp>,
     private readonly mailerService: MailerService,
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(newUser: CreateUserDto): Promise<User> {
-    const isExists = (await this.findOne(newUser.email)) ? true : false;
+  async findAll(): Promise<User[]> {
+    return this.userRepository.find();
+  }
 
+  // REGISTER NEW USERS -----------------
+  async register(newUser: CreateUserDto): Promise<User> {
+    const isExists = !!(await this.userRepository.findOne({
+      where: { email: newUser.email },
+    }));
+    //if email already exists
     if (isExists) {
       throw new HttpException(
         `Email '${newUser.email}' already exists.`,
         HttpStatus.CONFLICT,
       );
     }
-
     newUser.password = await bcrypt.hash(newUser.password, saltOrRounds);
+    //sending the otp to the user;
     await this.sendOtp(newUser);
-    const createdUser = await this.User.create(newUser);
+    //save the user
+    const createdUser = await this.userRepository.save(newUser);
     return createdUser;
   }
 
   async login(userCredentials: LoginUserDto): Promise<any> {
-    const user = await this.User.findOne({ email: userCredentials.email });
-    
-    if(!user){
+    const user = await this.userRepository.findOne({
+      where: { email: userCredentials.email },
+    });
+
+    if (!user) {
       throw new UnauthorizedException();
     }
 
@@ -68,226 +77,217 @@ export class UsersService {
     if (!isMatch) {
       throw new UnauthorizedException();
     }
-    const payload = { _id: user._id, email: user.email };
+
+    const payload = { id: user.id, email: user.email };
 
     return {
       access_token: await this.jwtService.signAsync(payload),
     };
   }
 
-  async findOne(email: string): Promise<any> {
-    console.log('email i got ', email);
-    return await this.User.findOne({ email: email });
-  }
-
   async verifyEmail(req: RequestExpress): Promise<any> {
     //validating otp
-    const userId = req["user"]._id;
-    const user = await this.User.findById(userId).populate("otp");
-    
+    const userId = req['user'].id;
+    const user = await this.userRepository.findOneBy({ id: userId });
+
+    console.log('user', user);
     await this.verifyOtp(req, user);
 
-    // if in user isVerified is false then turn it to true 
-    if(!user.isVerified){
-      await this.User.findByIdAndUpdate(userId, {isVerified: true});
-      return "email is successfully verified";
+    // if in user isVerified is false then turn it to true
+    if (!user.isVerified) {
+      await this.userRepository.update(userId, { isVerified: true });
+      return 'email is successfully verified';
     }
-    return "otp is successfully verified";
+    return 'otp is successfully verified';
   }
 
-
-  async verifyOtp(req: RequestExpress, user: CreateUserDto): Promise<any>{
-
+  async verifyOtp(req: RequestExpress, user: CreateUserDto): Promise<any> {
     const otpRecieved = req.body.otp;
-    console.log("this is the otp i recieved ", otpRecieved);
+    console.log('otp recieved ', otpRecieved);
 
-    if(!user){
+    if (!user) {
       throw new UnauthorizedException('user does not exists');
     }
 
-    if(!otpRecieved){
-      throw new BadRequestException('OTP not received in the request body');
+    if (!otpRecieved) {
+      throw new BadRequestException('OTP not received');
     }
 
-    console.log("this is user ", user);
+    console.log('this is user ', user);
+
     //get reference of otp
     const otpDoc = user.otp;
-    
-    // checking if otp already used;
-    if(otpDoc.isVerified){
+
+    // checking if otp already used or wrong pin provided;
+    if (otpDoc?.isVerified || otpRecieved != otpDoc?.pin) {
       throw new BadRequestException('Invalid otp');
     }
 
     // checking if otp expired
-    if(moment(otpDoc.expiryDate).isBefore(moment())){
+    if (moment(otpDoc.expiryDate).isBefore(moment())) {
       throw new BadRequestException('Otp expired');
     }
 
-    if (otpRecieved != otpDoc.pin){
-      throw new BadRequestException('Invalid otp');
-    }
-
-    //otp is correct and verified----------------------------
-    
-    // otpDoc.isVerified = true;
-    await this.Otp.findByIdAndUpdate(otpDoc._id, {isVerified: true});
+    //here otp is correct and verified
+    await this.otpRepository.update(otpDoc.id, { isVerified: true });
   }
 
+  // REFRESH OTP
   async refreshOtp(req: RequestExpress): Promise<string> {
-    const userId = req["user"]._id;
-    const user = await this.User.findById(userId).populate("otp");
-    const otpId = user.otp._id;
+    const userId = req["user"].id;
+    const user = await this.userRepository.findOneBy({id: userId});
+    const otpId = user.otp?.id;
 
     await this.sendOtp(user, otpId);
     return "otp sent to your email " + user.email;
   }
 
-  async sendOtp(user: CreateUserDto, otpId: string|null = null, newEmail: string|null = null){
+  // SEND OTP TO THE USER, OTP reference and NewEmail are optional
+  async sendOtp(
+    user: CreateUserDto,
+    otpId: number | null = null,
+    newEmail: string | null = null,
+  ) {
     const randomPin = await otpGen();
 
+    //send the mail to the user's email
     this.mailerService.sendMail({
-      to: newEmail? newEmail:user.email,
+      to: newEmail ? newEmail : user.email,
       from: 'laisha.erdman35@ethereal.email',
       subject: 'Testing Nest MailerModule',
       text: randomPin,
       html: `<b>${randomPin}<b>`,
     });
-    //--------------
 
     //update the whole object of otp
     const newOtp = {
       pin: randomPin,
-      createdAt: moment(),
-      expiryDate: moment().add(1, 'h'),
-      email: newEmail? newEmail:user.email,
-      isVerified: false
+      createdAt: moment().toDate(),
+      expiryDate: moment().add(1, 'h').toDate(),
+      email: newEmail ? newEmail : user.email,
+      isVerified: false,
     };
 
-    if(otpId){
-      await this.Otp.findByIdAndUpdate(otpId, newOtp);
-    }else{
-      const otpDoc = await this.Otp.create(newOtp);
-      user.otp = otpDoc._id;
+    console.log('user reached here ', user);
+    if (otpId) {
+      console.log('otp id received', otpId);
+      await this.otpRepository.update(otpId, newOtp);
+    } else {
+      console.log('newopt row ', newOtp);
+      const otpDoc = await this.otpRepository.save(newOtp);
+      user.otp = otpDoc.id;
     }
   }
 
-  async changePassword(req: RequestExpress, body: ChangePasswordDto): Promise<any>{
-    
+  async changePassword(
+    req: RequestExpress,
+    body: ChangePasswordDto,
+  ): Promise<any> {
     const newPassword = body.newPassword;
     const currentPassword = body.currentPassword;
 
-    console.log("this is user ", req["user"]);
-    console.log(" this is hashed password ",await bcrypt.hash(currentPassword, saltOrRounds));
+    console.log('this is user ', req['user']);
 
-    if(! await bcrypt.compare(currentPassword, req["user"].password)){
+    if (!(await bcrypt.compare(currentPassword, req['user'].password))) {
       throw new UnauthorizedException('Incorrect current password');
     }
 
-    await this.User.findByIdAndUpdate(req["user"]._id, {
-      password:  await bcrypt.hash(newPassword, saltOrRounds)
+    await this.userRepository.update(req['user'].id, {
+      password: await bcrypt.hash(newPassword, saltOrRounds),
     });
 
     return {
-      message: "successfully changed the password"
-    }
-  }
-
-  async forgotPassword(req: RequestExpress, body: ForgotPasswordDto): Promise<any>{
-    const email = body.email;
-    if(email !== req["user"].email){
-      throw new UnauthorizedException('invalid email');
-    }
-    const user = await this.User.findOne({email: email}).populate("otp");
-
-    if(!user){
-      throw new UnauthorizedException('User does not exists');
-    }
-    
-    await this.sendOtp(user, user.otp._id);
-    
-    const payload = { _id: user._id, email: user.email, isResetToken: true };
-    return {
-      access_token: await this.jwtService.signAsync(payload, {expiresIn: '2m'}),
+      message: 'successfully changed the password',
     };
-
   }
 
-  async resetPassword(req: RequestExpress, body: ResetPasswordDto): Promise<any>{
+  async forgotPassword(
+    req: RequestExpress,
+    body: ForgotPasswordDto,
+  ): Promise<any> {
+    const email = body.email;
+    if (!email) {
+      throw new UnauthorizedException('email not received');
+    }
 
-    const userId = req["user"]._id;
-    console.log("this is user", req["user"]);
-    if(!req["user"].isResetToken){
+    const user = await this.userRepository.findOneBy({ email: email });
+
+    if (!user) {
+      throw new UnauthorizedException('No user exists with this email');
+    }
+
+    await this.sendOtp(user, user.otp.id);
+
+    const payload = { id: user.id, email: user.email, isResetToken: true };
+    return {
+      access_token: await this.jwtService.signAsync(payload, {
+        expiresIn: '2m',
+      }),
+    };
+  }
+
+  async resetPassword(
+    req: RequestExpress,
+    body: ResetPasswordDto,
+  ): Promise<any> {
+    const userId = req['user'].id;
+    console.log('this is user', req['user']);
+
+    if (!req['user'].isResetToken) {
       throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
     }
 
-    const user = await this.User.findById(userId).populate("otp");
+    const user = await this.userRepository.findOneBy({ id: userId });
 
-    if(body.newPassword !== body.confirmPassword){
+    if (body.newPassword !== body.confirmPassword) {
       throw new HttpException('Passwords do not match', HttpStatus.BAD_REQUEST);
     }
 
     await this.verifyOtp(req, user);
 
+    await this.userRepository.update(userId, {
+      password: await bcrypt.hash(body.newPassword, saltOrRounds),
+    });
 
-    await this.User.findByIdAndUpdate(userId, {
-      password: await bcrypt.hash(body.newPassword, saltOrRounds)
-    })
-
-    return "Password reset Successfully";
+    return 'Password reset Successfully';
   }
 
-  async emailUpdateRequest(req: RequestExpress, body: UpdateEmailDto): Promise<any>{
-
-    const userId = req["user"]._id;
+  async emailUpdateRequest(
+    req: RequestExpress,
+    body: UpdateEmailDto,
+  ): Promise<any> {
+    const userId = req['user'].id;
     const newEmail = body.newEmail;
-    
-    let user = await this.User.findOne({email: newEmail});
 
-    if(user){
+    let user = await this.userRepository.findOneBy({ email: newEmail });
+
+    // check if email already exists
+    if (user) {
       throw new HttpException('Email already exists', HttpStatus.BAD_REQUEST);
     }
 
-    console.log("this is user", req["user"]);
+    console.log('this is user', req['user']);
 
-    // if(!req["user"].isResetToken){
-    //   throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
-    // }
+    user = await this.userRepository.findOneBy({ id: userId });
 
-    user = await this.User.findById(userId).populate("otp");
+    await this.sendOtp(user, user?.otp.id, newEmail);
 
-    await this.sendOtp(user, user?.otp._id, newEmail);
-
-    return "Otp sent Successfully";
+    return 'Otp sent Successfully';
   }
 
-
-  async emailUpdate(req: RequestExpress, body: OtpDto): Promise<any>{
-
-    const userId = req["user"]._id;
+  async emailUpdate(req: RequestExpress, body: OtpDto): Promise<any> {
+    console.log(body);
+    const userId = req['user'].id;
     // const newEmail = body.newEmail;
-    
-    let user = await this.User.findById(userId).populate("otp");
 
-
-    // if(user){
-    //   throw new HttpException('Email already exists', HttpStatus.BAD_REQUEST);
-    // }
-
-    /////////////////////////
+    const user = await this.userRepository.findOneBy({ id: userId });
 
     await this.verifyOtp(req, user);
 
-    /////////////////////////
+    console.log('this is user', req['user']);
 
-    console.log("this is user", req["user"]);
+    await this.userRepository.update(userId, { email: user.otp.email });
 
-    // if(!req["user"].isResetToken){
-    //   throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
-    // }
-
-    await this.User.findByIdAndUpdate(userId, {email: user.otp.email});
-
-    return "successfully changed the email";
+    return 'successfully changed the email';
   }
-
 }

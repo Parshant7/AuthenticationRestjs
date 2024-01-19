@@ -10,26 +10,26 @@ export class AuthService {
     async signIn(email:string, pass: string): Promise<any> {
         console.log("email", email, "password", pass);
 
-        const user = await this.userService.findOne(email);
-        console.log("this is user ", user);
+        // const user = await this.userService.findOne(email);
+        // console.log("this is user ", user);
 
-        if( !user){
-            throw new UnauthorizedException();
-        }
+        // if( !user){
+        //     throw new UnauthorizedException();
+        // }
 
-        const isMatch = await bcrypt.compare(
-            pass,
-            user.password,
-        );
+        // const isMatch = await bcrypt.compare(
+        //     pass,
+        //     user.password,
+        // );
 
-        if (!isMatch) {
-            throw new UnauthorizedException();
-        }
+        // if (!isMatch) {
+        //     throw new UnauthorizedException();
+        // }
         
-        const payload = { _id: user._id, email: user.email };
+        // const payload = { _id: user._id, email: user.email };
             
         return {
-            access_token: await this.jwtService.signAsync(payload),
+            access_token: await this.jwtService.signAsync("dsfdf"),
         };
 
     }

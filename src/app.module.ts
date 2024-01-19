@@ -4,8 +4,9 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
-import { AuthModule } from './auth/auth.module';
+// import { AuthModule } from './auth/auth.module';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { MailerModule } from '@nestjs-modules/mailer';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'] }),
     MongooseModule.forRoot(process.env.DATABASE_URL),
     UsersModule,
-    AuthModule,
+    // AuthModule,
+    DatabaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Post, UseGuards, Request, Put, Patch } from '@nestjs/common';
 import { Request as RequestExpress } from 'express';
-import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { User } from "./models/user.model";
-import { LoginUserDto } from './dto/login-user.dto';
 import { ApiBody, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { AuthorizeUser, AuthorizeValidatedUser } from '../auth/auth.guard';
+import { UsersService } from './users.service';
+import { AuthorizeUser, AuthorizeValidatedUser } from './auth.guard';
+import { User } from "./models/user.model";
+import { CreateUserDto } from './dto/create-user.dto';
+import { LoginUserDto } from './dto/login-user.dto';
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -15,6 +15,11 @@ import { OtpDto } from './dto/otp.dto';
 @Controller('users')
 export class UsersController {
     constructor(private readonly userService: UsersService){}
+
+    @Get("/findAll")
+    async findAll(){
+      return this.userService.findAll();
+    }
 
     @ApiTags('register User')
     @Post("/register")
